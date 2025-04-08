@@ -9,6 +9,8 @@ from googleapiclient.discovery import build
 from colorama import init, Fore
 import sys
 import requests
+from bs4 import BeautifulSoup
+import re
 
 init(autoreset=True)
 
@@ -18,7 +20,7 @@ class Logger:
         self.has_code = options.get('code', False)
         self.has_body = options.get('body', False)
         self.dest = options.get('dest', False)
-        self.is_extended = any([self.has_code, self.has_body, self.has_title])
+        self.is_extended = any([self.has_code, self.has_body])
         if self.dest and isinstance(self.dest, str):
             self.dest = open(self.dest, 'a')
 
@@ -35,8 +37,11 @@ class Logger:
         elif code >= 400 and code < 600:
             color = Fore.RED
         return f"{color}[{code}]"
-    def f_body(self, body: str) -> str:
-        return f"{Fore.CYAN}[{body}]"
+    def f_body(self, html: str) -> str:
+        soup = BeautifulSoup(html,'html.parser')
+        body = soup.body.get_text() if soup.body else ""
+        text = re.sub(r'[\s]+', " ", body).strip()[0:100]
+        return f"{Fore.CYAN}[{text}]"
 
     def f_result(self, info: str) -> str:
         return f"{Fore.BLUE}[URL] {info}"
@@ -53,7 +58,7 @@ class Logger:
         if self.has_title:
             output.append(self.f_title(pieces['title']))
         if self.has_body:
-            output.append(self.f_body(pieces["body"])[:100])
+            output.append(self.f_body(pieces["body"]))
         return ' '.join(output)
 
     def write(self, line: str) -> None:
@@ -97,7 +102,8 @@ class GoogleSearch:
         service = build("customsearch", "v1", developerKey=self.api_key)
         try:
             res = service.cse().list(q=query, cx=self.cse_id, start=start, num=self.per_page).execute()
-            return res.get('items', [])
+            items = res.get('items')
+            return items
         except Exception as e:
             try:
                 error_content = json.loads(e.content)
@@ -111,18 +117,19 @@ class GoogleSearch:
                 self.logger.log_error(e.content)
             return []
 
-    def _print_results(self, urls: list[str]):
-        for url in urls:
+    def _print_results(self, results: list):
+        for item in results:
+            url = item['link']
             pieces = {
-                "url": url
+                "url": url,
+                "title": item['title']
             }
             if self.logger.is_extended:
                 res = requests.get(url)
                 pieces = {
-                    "url": url,
+                    **pieces,
                     "code": res.status_code,
-                    "body": res.text,
-                    "title": res.headers.get('title', 'No Title')
+                    "body": res.text
                 }
             self.logger.log_result(pieces)
 
@@ -139,16 +146,27 @@ class GoogleSearch:
             time.sleep(1)
 
 def handle_exit_signal(google_search: GoogleSearch, logger: Logger, signum: int, frame: Any) -> NoReturn:
-    logger.info("Interrupted by user, saving session...")
+    logger.log_info("Interrupted by user, saving session...")
     #google_search.save_session()  # TODO
     exit(0)
 
-def main(api_key: str, cse_id: str, query: str, f_options) -> None:
+def load_queries(file_or_query: str) -> list[str]:
+    try:
+        with open(file_or_query, 'r') as f:
+            queries = f.readlines()
+            return queries
+    except Exception as e:
+        return [file_or_query]
+
+def main(api_key: str, cse_id: str, file_or_query: str, f_options) -> None:
     logger = Logger(f_options)
     google_search = GoogleSearch(logger, api_key, cse_id)
 
     signal.signal(signal.SIGINT, lambda signum, frame: handle_exit_signal(google_search, logger, signum, frame))
-    google_search.query_results(query)
+    queries = load_queries(file_or_query)
+    for query in queries:
+        logger.log_info(f"Query {query}")
+        google_search.query_results(query)
 
 if __name__ == "__main__":
     sys.stderr.write("""
@@ -180,7 +198,7 @@ Examples:
     required.add_argument(
         "-q", "--query",
         required=True,
-        help="Search query (Google dork string)"
+        help="Search query (Google dork string) or path to file with queries"
     )
     required.add_argument(
         "-k", "--api-key",
@@ -198,17 +216,17 @@ Examples:
         "-f", "--file",
         help="Save results to file"
     )
+    output.add_argument(
+        "-t", "--title",
+        action="store_true",
+        help="Include page title"
+    )
 
     content = parser.add_argument_group('Options that trigger additional request for each URL')
     content.add_argument(
-        "-t", "--title",
-        action="store_true",
-        help="Include page titles in output"
-    )
-    content.add_argument(
         "-c", "--code",
         action="store_true",
-        help="Include HTTP status codes in output"
+        help="Include HTTP status codes"
     )
     content.add_argument(
         "-b", "--body",

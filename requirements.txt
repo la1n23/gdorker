@@ -1,3 +1,5 @@
+beautifulsoup4==4.13.3
+bs4==0.0.2
 cachetools==5.5.2
 certifi==2025.1.31
 charset-normalizer==3.4.1
@@ -16,5 +18,7 @@ pyasn1_modules==0.4.2
 pyparsing==3.2.3
 requests==2.32.3
 rsa==4.9
+soupsieve==2.6
+typing_extensions==4.13.1
 uritemplate==4.1.1
 urllib3==2.3.0
