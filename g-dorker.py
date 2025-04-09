@@ -64,7 +64,7 @@ class Logger:
     def write(self, line: str) -> None:
         print(line)
 
-    def log_result(self, pieces: Dict[str, str]) -> None:
+    def log_url(self, pieces: Dict[str, str]) -> None:
         result = self._build_result(pieces)
         line = self.f_info(result)
         self.write(line)
@@ -131,9 +131,10 @@ class GoogleSearch:
                     "code": res.status_code,
                     "body": res.text
                 }
-            self.logger.log_result(pieces)
+            self.logger.log_url(pieces)
 
     def query_results(self, query: str) -> None:
+        self.offset: int = 1
         start: int = self.offset
         while not self.is_limit_reached:
             self.logger.log_info(f"Page {self._page}")
@@ -165,8 +166,10 @@ def main(api_key: str, cse_id: str, file_or_query: str, f_options) -> None:
     signal.signal(signal.SIGINT, lambda signum, frame: handle_exit_signal(google_search, logger, signum, frame))
     queries = load_queries(file_or_query)
     for query in queries:
-        logger.log_info(f"Query {query}")
+        logger.log_info(f"Query: {query}")
         google_search.query_results(query)
+        if google_search.is_limit_reached:
+            break
 
 if __name__ == "__main__":
     sys.stderr.write("""
