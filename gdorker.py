@@ -9,7 +9,8 @@ from types import TracebackType
 from googleapiclient.discovery import build
 from colorama import init, Fore
 import sys
-import requests
+import asyncio
+import aiohttp
 from bs4 import BeautifulSoup
 import re
 
@@ -141,6 +142,9 @@ class Dorker:
                 if error_content['error']['status'] == 'RESOURCE_EXHAUSTED':
                     self.logger.info("Resource limit reached. Please try again in 24h")
                     self.is_limit_reached = True
+                elif error_content['error']['status'] == 'INVALID_ARGUMENT':
+                    self.logger.info("No more links for current query")
+                    return []
                 else:
                     self.logger.error(e.content)
                     raise e
@@ -148,20 +152,32 @@ class Dorker:
                 self.logger.error(e.content)
             return []
 
+
+    async def _print_results_extended(self, results: List[Dict[str, Any]]) -> None:
+        async def fetch(session, item):
+            async with session.get(item['link']) as response:
+                text = await response.text()
+                return (item, response.status, text)
+        async with aiohttp.ClientSession() as session:
+            tasks = [fetch(session, item) for item in results]
+            fetched = await asyncio.gather(*tasks)
+            for item, status, body in fetched:
+                pieces = {
+                    "url": item['link'],
+                    "title": item['title'],
+                    "code": status,
+                    "body": body
+                }
+                self.logger.url(pieces)
+
     def _print_results(self, results: List[Dict[str, Any]]) -> None:
+        if self.logger.formatter.is_extended:
+            return asyncio.run(self._print_results_extended(results))
         for item in results:
-            url = item['link']
             pieces = {
-                "url": url,
+                "url": item['link'],
                 "title": item['title']
             }
-            if self.logger.formatter.is_extended:
-                res = requests.get(url)
-                pieces = {
-                    **pieces,
-                    "code": res.status_code,
-                    "body": res.text
-                }
             self.logger.url(pieces)
 
     def query_results(self, query: str, offset: Optional[int]) -> None:
@@ -302,6 +318,7 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
         logger.info(f"Query: {query}")
         try:
             dorker.query_results(query, offset)
+            session.save(file_or_query, logger, dorker)
         except Exception as e:
             logger.error(f"Error during query execution: {e}")
             session.save(file_or_query, logger, dorker)
@@ -392,8 +409,8 @@ Examples:
         'debug': args.debug
     }
 
-    if args.debug:
-        print(dir(Fore))
+    #if args.debug:
+    #    print(dir(Fore))
 
     session = args.session
     resume = bool(session)
