@@ -1,5 +1,5 @@
 output.txt
 venv
-g_dorker_session*
+gdorker_session*
 __pycache__
 .coverage

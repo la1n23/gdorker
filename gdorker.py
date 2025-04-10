@@ -108,13 +108,11 @@ class Logger:
 class Dorker:
     per_page = 10
 
-    def __init__(self, logger: Logger, api_key: str, cse_id: str) -> None:
+    def __init__(self, logger: Logger, client) -> None:
         self.logger = logger
-        self.api_key = api_key
-        self.cse_id = cse_id
         self.offset: int = 0
         self.is_limit_reached = False
-        self.client = lambda q, cx, start, num: build("customsearch", "v1", developerKey=self.api_key).cse().list(q=q, cx=cx, start=start, num=num).execute()
+        self.client = client
 
     @property
     def _page(self) -> int:
@@ -122,7 +120,7 @@ class Dorker:
 
     def _search(self, query: str, start: int = 0) -> List[Dict[str, Any]]:
         try:
-            res = self.client(query, self.cse_id, start, self.per_page)
+            res = self.client(query, start, self.per_page)
             items = res.get('items')
             return items
         except Exception as e:
@@ -184,10 +182,10 @@ class Session():
     def clean(self):
         os.remove(self.file)
 
-    def save(self, api_key, cse_id, file_or_query, logger: Logger, gs: Dorker):
+    def save(self, file_or_query, logger: Logger, gs: Dorker):
         session = {
-            'api_key': api_key,
-            'cse_id': cse_id,
+            #'api_key': api_key,
+            #'cse_id': cse_id,
             'file_or_query': file_or_query,
             'options': logger.formatter.options,
             'current_query': gs.query,
@@ -199,7 +197,7 @@ class Session():
 
 def handle_exit_signal(session, api_key, cse_id, file_or_query, logger: Logger, gs: Dorker) -> NoReturn:
     logger.info("Interrupted by user, saving session...")
-    session.save(api_key, cse_id, file_or_query, logger, gs)
+    session.save(file_or_query, logger, gs)
     exit(0)
 
 def load_queries(file_or_query: str) -> list[str]:
@@ -212,7 +210,7 @@ def load_queries(file_or_query: str) -> list[str]:
         return [file_or_query]
 
 
-def main(api_key: str, cse_id: str, file_or_query: str, resume: bool, session, options) -> None:
+def main(client, file_or_query: str, resume: bool, session, options) -> None:
     """
     todo: take api keys form config file
     todo: async requests
@@ -230,19 +228,19 @@ def main(api_key: str, cse_id: str, file_or_query: str, resume: bool, session, o
         current_query = data['current_query']
 
     logger = Logger(options)
-    google_search = Dorker(logger, api_key, cse_id)
+    dorker = Dorker(logger, client)
 
     queries = load_queries(file_or_query)
     if current_query:
         index = next((i for i, q in enumerate(queries) if q == current_query), len(queries))
         queries = queries[index:]
 
-    signal.signal(signal.SIGINT, lambda signum, frame: handle_exit_signal(session, api_key, cse_id, file_or_query, logger, google_search))
+    signal.signal(signal.SIGINT, lambda signum, frame: handle_exit_signal(session, api_key, cse_id, file_or_query, logger, dorker))
     for query in queries:
         logger.info(f"Query: {query}")
-        google_search.query_results(query, offset)
-        if google_search.is_limit_reached:
-            session.save(api_key, cse_id, file_or_query, logger, google_search)
+        dorker.query_results(query, offset)
+        if dorker.is_limit_reached:
+            session.save(file_or_query, logger, dorker)
             exit(1)
     session.clean()
 
@@ -262,7 +260,7 @@ Examples:
     ./gdorker.py -q "inurl:admin" -k YOUR_API_KEY -x YOUR_CSE_ID -t -c -b
     ./gdorker.py -q "filetype:pdf" -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
     ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
-    ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt --session ./g_dorker_session_1744260850.json
+    ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt --session ./gdorker_session_1744260850.json
 """)
 
     required = parser.add_argument_group('Required arguments')
@@ -325,5 +323,6 @@ Examples:
     session = args.session
     resume = bool(session)
     if not session:
-        session = f"g_dorker_session_{int(time.time())}.json"
-    main(args.api_key, args.cx, args.query, resume, session, options)
+        session = f"gdorker_session_{int(time.time())}.json"
+    client = lambda q, start, per_page: build("customsearch", "v1", developerKey=args.api_key).cse().list(q=q, cx=args.cx, start=start, num=per_page).execute()
+    main(client, args.query, resume, session, options)
