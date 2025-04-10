@@ -4,7 +4,8 @@ import json
 import os
 import time
 import signal
-from typing import Dict, List, Optional, Any, NoReturn
+from typing import Dict, List, Optional, Any, NoReturn, Callable, Union
+from types import TracebackType
 from googleapiclient.discovery import build
 from colorama import init, Fore
 import sys
@@ -24,7 +25,7 @@ banner = """
                                By La1n
 """
 
-# todo: take api keys form config file
+# todo: errors NoMoreResultsException and ResourceExhaustedException
 # todo: async requests
 # todo: save data inside session class and pass it google search
 
@@ -142,6 +143,7 @@ class Dorker:
                     self.is_limit_reached = True
                 else:
                     self.logger.error(e.content)
+                    raise e
             except json.JSONDecodeError:
                 self.logger.error(e.content)
             return []
@@ -213,32 +215,93 @@ def load_queries(file_or_query: str) -> List[str]:
     except Exception as e:
         return [file_or_query]
 
+class ConfigManager:
+    def __init__(self, config_path='~/.config/gdorker/config.json'):
+        self.config_path = os.path.expanduser(config_path)
+        self.default_content = {
+            "google_api_key": "",
+            "google_cse_id": ""
+        }
+        self._ensure_config_exists()
+        
+    def _ensure_config_exists(self):
+        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+        if not os.path.isfile(self.config_path):
+            with open(self.config_path, 'w') as f:
+                json.dump(self.default_content, f, indent=4)
+    
+    def load_api_keys(self):
+        with open(self.config_path, 'r') as f:
+            return json.load(f)
+    
+    def get_google_api_keys(self):
+        api_keys = self.load_api_keys()
+        api_key = api_keys.get('google_api_key', "")
+        cse_id = api_keys.get('google_cse_id', "")
+        
+        print(api_key, cse_id)
+        if not len(api_key) or not len(cse_id):
+            raise ValueError("API Key and CSE ID must be set in the configuration file.")
+            
+        return api_key, cse_id
 
-def main(client: Callable[[str, int, int], Dict[str, Any]], file_or_query: str, resume: bool, session: Session, options: Dict[str, Any]) -> None:
+class SearchClient:
+    def __init__(self, search_engine='google'):
+        self.search_engine = search_engine
+        self.config = ConfigManager()
+        
+        if search_engine == 'google':
+            self.api_key, self.cse_id = self.config.get_google_api_keys()
+            self.client = self._create_google_client()
+        elif search_engine == 'duckduckgo':
+            # Future implementation for DuckDuckGo
+            self.client = self._create_duckduckgo_client()
+        else:
+            raise ValueError(f"Unsupported search engine: {search_engine}")
+
+    def _create_google_client(self):
+        return lambda q, start, per_page: build("customsearch", "v1", developerKey=self.api_key).cse().list(
+            q=q, cx=self.cse_id, start=start, num=per_page).execute()
+    
+    def _create_duckduckgo_client(self):
+        # Placeholder for future DuckDuckGo implementation
+        return lambda q, start, per_page: None
+    
+    def search(self, query, start, per_page):
+        return self.client(query, start, per_page)
+
+def main(client: SearchClient, file_or_query: str, resume: bool, session: Session, options: Dict[str, Any]) -> None:
     current_query = None
     offset = None
     session = Session(session)
     if resume:
         data = session.load()
-        api_key = data['api_key']
-        cse_id = data['cse_id']
         file_or_query = data['file_or_query']
         options = data['options']
         offset = data['offset']
         current_query = data['current_query']
 
     logger = Logger(options)
-    dorker = Dorker(logger, client)
+    dorker = Dorker(logger, client.search)
 
     queries = load_queries(file_or_query)
     if current_query:
         index = next((i for i, q in enumerate(queries) if q == current_query), len(queries))
         queries = queries[index:]
 
-    signal.signal(signal.SIGINT, lambda signum, frame: handle_exit_signal(session, api_key, cse_id, file_or_query, logger, dorker))
+    signal.signal(signal.SIGINT, lambda signum, frame: handle_exit_signal(
+        session, search_client.api_key if hasattr(search_client, 'api_key') else None, 
+        search_client.cse_id if hasattr(search_client, 'cse_id') else None, 
+        file_or_query, logger, dorker))
+        
     for query in queries:
         logger.info(f"Query: {query}")
-        dorker.query_results(query, offset)
+        try:
+            dorker.query_results(query, offset)
+        except Exception as e:
+            logger.error(f"Error during query execution: {e}")
+            session.save(file_or_query, logger, dorker)
+            exit(1)
         if dorker.is_limit_reached:
             session.save(file_or_query, logger, dorker)
             exit(1)
@@ -309,6 +372,13 @@ Examples:
         help="Include first 100 chars of page body"
     )
 
+    parser.add_argument(
+        "-e", "--engine",
+        default="google",
+        choices=["google", "duckduckgo"],
+        help="Search engine to use"
+    )
+
     args = parser.parse_args()
     options = {
         'title': args.title,
@@ -325,6 +395,7 @@ Examples:
     resume = bool(session)
     if not session:
         session = f"gdorker_session_{int(time.time())}.json"
-    client = lambda q, start, per_page: build("customsearch", "v1", developerKey=args.api_key).cse().list(q=q, cx=args.cx, start=start, num=per_page).execute()
-    main(client, args.query, resume, session, options)
+        
+    search_client = SearchClient(args.engine)
+    main(search_client, args.query, resume, session, options)
 
