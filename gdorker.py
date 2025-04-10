@@ -155,7 +155,7 @@ class Dorker:
                 "url": url,
                 "title": item['title']
             }
-            if self.logger.is_extended:
+            if self.logger.formatter.is_extended:
                 res = requests.get(url)
                 pieces = {
                     **pieces,
@@ -217,6 +217,8 @@ def load_queries(file_or_query: str) -> List[str]:
 
 class ConfigManager:
     def __init__(self, config_path='~/.config/gdorker/config.json'):
+        self.api_key = None
+        self.cse_id = None
         self.config_path = os.path.expanduser(config_path)
         self.default_content = {
             "google_api_key": "",
@@ -234,21 +236,23 @@ class ConfigManager:
         with open(self.config_path, 'r') as f:
             return json.load(f)
     
+    def set_api_keys(self, api_key, cse_id):
+        self.api_key = api_key
+        self.cse_id = cse_id
+
     def get_google_api_keys(self):
         api_keys = self.load_api_keys()
-        api_key = api_keys.get('google_api_key', "")
-        cse_id = api_keys.get('google_cse_id', "")
-        
-        print(api_key, cse_id)
+        api_key = api_keys.get('google_api_key', '') or self.api_key
+        cse_id = api_keys.get('google_cse_id', '') or self.cse_id
         if not len(api_key) or not len(cse_id):
             raise ValueError("API Key and CSE ID must be set in the configuration file.")
             
         return api_key, cse_id
 
 class SearchClient:
-    def __init__(self, search_engine='google'):
+    def __init__(self, search_engine='google', config: ConfigManager = None):
         self.search_engine = search_engine
-        self.config = ConfigManager()
+        self.config = config
         
         if search_engine == 'google':
             self.api_key, self.cse_id = self.config.get_google_api_keys()
@@ -395,7 +399,11 @@ Examples:
     resume = bool(session)
     if not session:
         session = f"gdorker_session_{int(time.time())}.json"
-        
-    search_client = SearchClient(args.engine)
+
+    config = ConfigManager()
+    if args.api_key and args.cx:
+        config.set_api_keys(args.api_key, args.cx)
+
+    search_client = SearchClient(args.engine, config)
     main(search_client, args.query, resume, session, options)
 
