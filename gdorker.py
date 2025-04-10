@@ -258,11 +258,11 @@ Allows saving results to file and extracting additional information from URLs.
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    ./g-dorker.py -q "site:example.com" -k YOUR_API_KEY -x YOUR_CSE_ID
-    ./g-dorker.py -q "inurl:admin" -k YOUR_API_KEY -x YOUR_CSE_ID -t -c -b
-    ./g-dorker.py -q "filetype:pdf" -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
-    ./g-dorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
-    ./g-dorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt --session ./g_dorker_session_1744260850.json
+    ./gdorker.py -q "site:example.com" -k YOUR_API_KEY -x YOUR_CSE_ID
+    ./gdorker.py -q "inurl:admin" -k YOUR_API_KEY -x YOUR_CSE_ID -t -c -b
+    ./gdorker.py -q "filetype:pdf" -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
+    ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
+    ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt --session ./g_dorker_session_1744260850.json
 """)
 
     required = parser.add_argument_group('Required arguments')
