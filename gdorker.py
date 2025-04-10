@@ -22,18 +22,23 @@ banner = """
 ⠀⠈⠻⣷⣶⣴⣿⡿⠀⠀⠀⠀⠀⠀⠀⣤⣼⣿⣤⣠⣴⠿⠁⠀⠀⠘⠿⣦⣤⣤⠟⠀⠀⠀⢠⣿⣧⣄⢀⣿⣷⣤⠀⣠⣽⣄⡀⢀⣠⣷⣤⠀⣠⣿⣷⣤⣴⣴⣾⣿⠀⠀⢴⣿⣦⡀⣸⣿⣦⡄
                                
                                By La1n
-
 """
 
+# todo: take api keys form config file
+# todo: async requests
+# todo: save data inside session class and pass it google search
+
 class Formatter:
-    def __init__(self, options):
-        self.options = options
-        self.is_extended = any([self.options['code'], self.options['body']])
-        pass
+    def __init__(self, options: Dict[str, Any]) -> None:
+        self.options: Dict[str, Any] = options
+        self.is_extended: bool = any([self.options['code'], self.options['body']])
+
     def _title(self, title: str) -> str:
         return f"{Fore.MAGENTA}[{title}]"
+
     def _url(self, url: str) -> str:
         return f"{Fore.GREEN}[{url}]"
+
     def _code(self, code: int) -> str:
         color = Fore.WHITE
         if code >= 200 and code < 300:
@@ -43,21 +48,26 @@ class Formatter:
         elif code >= 400 and code < 600:
             color = Fore.RED
         return f"{color}[{code}]"
+
     def _body(self, html: str) -> str:
-        soup = BeautifulSoup(html,'html.parser')
-        body = soup.body.get_text() if soup.body else ""
-        text = re.sub(r'[\s]+', " ", body).strip()[0:100]
+        soup = BeautifulSoup(html, 'html.parser')
+        body: str = soup.body.get_text() if soup.body else ""
+        text: str = re.sub(r'[\s]+', " ", body).strip()[0:100]
         return f"{Fore.CYAN}[{text}]"
 
     def debug(self, info: str) -> str:
         return f"{Fore.LIGHTBLACK_EX}[DEBUG] {info}"
+
     def info(self, info: str) -> str:
         return f"{Fore.BLUE}[INFO] {info}"
+
     def error(self, error: str) -> str:
         return f"{Fore.RED}[ERROR] {error}"
+
     def _result(self, info: str) -> str:
         return f"{Fore.BLUE}[URL] {info}"
-    def result(self, pieces: Dict[str, str]):
+
+    def result(self, pieces: Dict[str, str]) -> str:
         output = [self._url(pieces["url"])]
 
         if self.options['code']:
@@ -100,7 +110,7 @@ class Logger:
         line = self.formatter.debug(info)
         self._write(line)
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback: Optional[TracebackType]) -> None:
         if self.dest:
             self.dest.close()
 
@@ -108,7 +118,7 @@ class Logger:
 class Dorker:
     per_page = 10
 
-    def __init__(self, logger: Logger, client) -> None:
+    def __init__(self, logger: Logger, client: Callable[[str, int, int], Dict[str, Any]]) -> None:
         self.logger = logger
         self.offset: int = 0
         self.is_limit_reached = False
@@ -125,9 +135,8 @@ class Dorker:
             return items
         except Exception as e:
             try:
-                self.logger.debug(e)
+                self.logger.debug(str(e))
                 error_content = json.loads(e.content)
-                #print(json.dumps(error_content, indent=4))
                 if error_content['error']['status'] == 'RESOURCE_EXHAUSTED':
                     self.logger.info("Resource limit reached. Please try again in 24h")
                     self.is_limit_reached = True
@@ -137,7 +146,7 @@ class Dorker:
                 self.logger.error(e.content)
             return []
 
-    def _print_results(self, results: list):
+    def _print_results(self, results: List[Dict[str, Any]]) -> None:
         for item in results:
             url = item['link']
             pieces = {
@@ -153,7 +162,7 @@ class Dorker:
                 }
             self.logger.url(pieces)
 
-    def query_results(self, query: str, offset: int | None) -> None:
+    def query_results(self, query: str, offset: Optional[int]) -> None:
         if offset is None:
             offset = 0
         self.offset: int = offset
@@ -167,25 +176,20 @@ class Dorker:
             self.offset = self.offset + self.per_page
             time.sleep(1)
 
-class Session():
-    """
-    todo: save data inside session class and pass it google search
-    """
-    def __init__(self, file):
+class Session:
+    def __init__(self, file: str) -> None:
         self.file = file
 
-    def load(self):
+    def load(self) -> Dict[str, Any]:
         with open(self.file, "r") as f:
             j = json.loads(f.read())
             return j
 
-    def clean(self):
+    def clean(self) -> None:
         os.remove(self.file)
 
-    def save(self, file_or_query, logger: Logger, gs: Dorker):
+    def save(self, file_or_query: Union[str, List[str]], logger: Logger, gs: Dorker) -> None:
         session = {
-            #'api_key': api_key,
-            #'cse_id': cse_id,
             'file_or_query': file_or_query,
             'options': logger.formatter.options,
             'current_query': gs.query,
@@ -193,14 +197,14 @@ class Session():
         }
         j = json.dumps(session, indent=2)
         with open(self.file, 'w') as f:
-            f.write(j)    
+            f.write(j)
 
-def handle_exit_signal(session, api_key, cse_id, file_or_query, logger: Logger, gs: Dorker) -> NoReturn:
+def handle_exit_signal(session: Session, api_key: str, cse_id: str, file_or_query: str, logger: Logger, gs: Dorker) -> NoReturn:
     logger.info("Interrupted by user, saving session...")
     session.save(file_or_query, logger, gs)
     exit(0)
 
-def load_queries(file_or_query: str) -> list[str]:
+def load_queries(file_or_query: str) -> List[str]:
     try:
         with open(file_or_query, 'r') as f:
             queries = f.readlines()
@@ -210,11 +214,7 @@ def load_queries(file_or_query: str) -> list[str]:
         return [file_or_query]
 
 
-def main(client, file_or_query: str, resume: bool, session, options) -> None:
-    """
-    todo: take api keys form config file
-    todo: async requests
-    """
+def main(client: Callable[[str, int, int], Dict[str, Any]], file_or_query: str, resume: bool, session: Session, options: Dict[str, Any]) -> None:
     current_query = None
     offset = None
     session = Session(session)
@@ -317,6 +317,7 @@ Examples:
         'dest': args.file,
         'debug': args.debug
     }
+
     if args.debug:
         print(dir(Fore))
 
@@ -326,3 +327,4 @@ Examples:
         session = f"gdorker_session_{int(time.time())}.json"
     client = lambda q, start, per_page: build("customsearch", "v1", developerKey=args.api_key).cse().list(q=q, cx=args.cx, start=start, num=per_page).execute()
     main(client, args.query, resume, session, options)
+
