@@ -1,14 +1,25 @@
 # GDORKER
 
-## Get API Keys from Google Search API
+## What is it
+
+CLI tool for searching with DuckDuckgo and Google Search API in friendly format 
+
+## Installation and run
+```
+pipx install gdorker
+gdorker --help
+```
+
+## Get API Keys for Google Search API
+
+You can skip this step if you are going to use DDG only.
 
 https://programmablesearchengine.google.com/controlpanel/
 
-```
-python3 -m venv venv
-source venv/bin/activate
+place keys here `~/.config/gdorker/config.json`
 
-pip3 install -r requirements.txt
+Config file will be created automatically after initial run
 
-./gdorker.py --help
-```
+## Caveats
+
+Might be glitchy. Gdorker was created for personal use and was not tested well, niether it has automated tests.

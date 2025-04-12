@@ -304,7 +304,7 @@ class SearchClient:
                 if error_content['error']['status'] == 'RESOURCE_EXHAUSTED':
                     self.logger.info("Resource limit reached")
                     self.is_limit_reached = True
-                    return []
+                    raise e
                 elif error_content['error']['status'] == 'INVALID_ARGUMENT':
                     self.logger.info("No more links for current query")
                 else:
@@ -316,6 +316,7 @@ class SearchClient:
             if '202' in str(e):
                 self.is_limit_reached = True
                 self.logger.info("Resource limit reached")
+                raise e
             else:
                 self.logger.error(f"DuckDuckGo error: {str(e)}")
             return []
@@ -364,7 +365,7 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
             exit(1)
     session.clean()
 
-if __name__ == "__main__":
+def entrypoint():
     print(banner)
     parser = argparse.ArgumentParser(
         description="""
@@ -457,7 +458,8 @@ Config file is located in ~/.config/gdorker/config.json
     session = args.session
     resume = bool(session)
     if not session:
-        session = f"gdorker_session_{int(time.time())}.json"
+        current_dir = os.getcwd()
+        session = os.path.join(current_dir, f"gdorker_session_{int(time.time())}.json")
 
     config = ConfigManager()
     if args.api_key and args.cx:
@@ -466,3 +468,5 @@ Config file is located in ~/.config/gdorker/config.json
     search_client = SearchClient(args.engine, config)
     main(search_client, args.query, resume, session, options)
 
+if __name__ == "__main__":
+    entrypoint()
