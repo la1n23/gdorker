@@ -1,0 +1,29 @@
+
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+[project]
+name = "gdorker"
+version = "1.0.0"
+dependencies = [
+  "google-api-python-client",
+  "duckduckgo_search",
+  "aiohttp"
+]
+description = "Script for automation search/dorking with Google and Duckduckgo"
+authors = [
+  {name = "La1n Iwakura", email = "la1n23@proton.me"}
+]
+readme = "README.md"
+license = "MIT"
+keywords = ["search", "dorking", "google", "Duckduckgo"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3"
+]
+
+[project.urls]
+Repository = "https://github.com/la1n23/gdorker.git"
+
+[project.scripts]
+gdorker = "gdorker:entrypoint"
