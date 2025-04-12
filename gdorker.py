@@ -120,11 +120,12 @@ class Logger:
 class Dorker:
     per_page = 10
 
-    def __init__(self, logger: Logger, client: Callable[[str, int, int], Dict[str, Any]]) -> None:
+    def __init__(self, logger: Logger, client: Callable[[str, int, int], Dict[str, Any]], error_handler) -> None:
         self.logger = logger
         self.offset: int = 0
         self.is_limit_reached = False
         self.client = client
+        self.error_handler = error_handler
 
     @property
     def _page(self) -> int:
@@ -133,25 +134,13 @@ class Dorker:
     def _search(self, query: str, start: int = 0) -> List[Dict[str, Any]]:
         try:
             res = self.client(query, start, self.per_page)
-            items = res.get('items')
+            items = res.get('items', [])
+            if len(items) == 0:
+                self.logger.info("No more links for current query")
+                return []
             return items
         except Exception as e:
-            try:
-                self.logger.debug(str(e))
-                error_content = json.loads(e.content)
-                if error_content['error']['status'] == 'RESOURCE_EXHAUSTED':
-                    self.logger.info("Resource limit reached. Please try again in 24h")
-                    self.is_limit_reached = True
-                elif error_content['error']['status'] == 'INVALID_ARGUMENT':
-                    self.logger.info("No more links for current query")
-                    return []
-                else:
-                    self.logger.error(e.content)
-                    raise e
-            except json.JSONDecodeError:
-                self.logger.error(e.content)
-            return []
-
+            return self.error_handler(e)
 
     async def _print_results_extended(self, results: List[Dict[str, Any]]) -> None:
         async def fetch(session, item):
@@ -274,7 +263,6 @@ class SearchClient:
             self.api_key, self.cse_id = self.config.get_google_api_keys()
             self.client = self._create_google_client()
         elif search_engine == 'duckduckgo':
-            # Future implementation for DuckDuckGo
             self.client = self._create_duckduckgo_client()
         else:
             raise ValueError(f"Unsupported search engine: {search_engine}")
@@ -284,11 +272,31 @@ class SearchClient:
             q=q, cx=self.cse_id, start=start, num=per_page).execute()
     
     def _create_duckduckgo_client(self):
-        # Placeholder for future DuckDuckGo implementation
+        raise Exception('not implemented yet')
         return lambda q, start, per_page: None
     
     def search(self, query, start, per_page):
         return self.client(query, start, per_page)
+
+    def error_handler(self):
+        if search_engine == 'google':
+            try:
+                self.logger.debug(str(e))
+                error_content = json.loads(e.content)
+                if error_content['error']['status'] == 'RESOURCE_EXHAUSTED':
+                    self.logger.info("Resource limit reached. Please try again in 24h")
+                    self.is_limit_reached = True
+                    return []
+                elif error_content['error']['status'] == 'INVALID_ARGUMENT':
+                    self.logger.info("No more links for current query")
+                else:
+                    raise e
+            except json.JSONDecodeError:
+                self.logger.error(e.content)
+            return []
+        else:
+            raise Exception('not implemented yet')
+
 
 def main(client: SearchClient, file_or_query: str, resume: bool, session: Session, options: Dict[str, Any]) -> None:
     current_query = None
@@ -302,7 +310,7 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
         current_query = data['current_query']
 
     logger = Logger(options)
-    dorker = Dorker(logger, client.search)
+    dorker = Dorker(logger, client.search, client.error_handler)
 
     queries = load_queries(file_or_query)
     if current_query:
@@ -320,6 +328,7 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
             dorker.query_results(query, offset)
             session.save(file_or_query, logger, dorker)
         except Exception as e:
+            raise e
             logger.error(f"Error during query execution: {e}")
             session.save(file_or_query, logger, dorker)
             exit(1)
