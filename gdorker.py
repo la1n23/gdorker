@@ -13,6 +13,8 @@ import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 import re
+import requests
+from duckduckgo_search import DDGS
 
 init(autoreset=True)
 
@@ -33,7 +35,7 @@ banner = """
 class Formatter:
     def __init__(self, options: Dict[str, Any]) -> None:
         self.options: Dict[str, Any] = options
-        self.is_extended: bool = any([self.options['code'], self.options['body']])
+        self.is_extended: bool = self.options['code'] or (self.options['body'] and self.options['engine'] != 'duckduckgo')
 
     def _title(self, title: str) -> str:
         return f"{Fore.MAGENTA}[{title}]"
@@ -216,7 +218,7 @@ def load_queries(file_or_query: str) -> List[str]:
         with open(file_or_query, 'r') as f:
             queries = f.readlines()
             unique = list(set(queries))
-            return queries
+            return unique
     except Exception as e:
         return [file_or_query]
 
@@ -272,19 +274,35 @@ class SearchClient:
             q=q, cx=self.cse_id, start=start, num=per_page).execute()
     
     def _create_duckduckgo_client(self):
-        raise Exception('not implemented yet')
-        return lambda q, start, per_page: None
+        def search(query: str, start: int, per_page: int) -> Dict[str, Any]:
+            try:
+                results = []
+                with DDGS() as ddgs:
+                    for r in ddgs.text(query, max_results=1000):
+                        results.append({
+                            'title': r['title'],
+                            'link': r['href'],
+                            'body': r['body']
+                        })
+                if not results:
+                    self.logger.info("No more links for current query")
+                    return {'items': []}
+                return {'items': results}
+            except Exception as e:
+                raise Exception(f"DuckDuckGo search error: {str(e)}")
+            
+        return search
     
     def search(self, query, start, per_page):
         return self.client(query, start, per_page)
 
-    def error_handler(self):
-        if search_engine == 'google':
+    def error_handler(self, e: Exception):
+        if self.search_engine == 'google':
             try:
                 self.logger.debug(str(e))
                 error_content = json.loads(e.content)
                 if error_content['error']['status'] == 'RESOURCE_EXHAUSTED':
-                    self.logger.info("Resource limit reached. Please try again in 24h")
+                    self.logger.info("Resource limit reached")
                     self.is_limit_reached = True
                     return []
                 elif error_content['error']['status'] == 'INVALID_ARGUMENT':
@@ -293,6 +311,13 @@ class SearchClient:
                     raise e
             except json.JSONDecodeError:
                 self.logger.error(e.content)
+            return []
+        elif self.search_engine == 'duckduckgo':
+            if '202' in str(e):
+                self.is_limit_reached = True
+                self.logger.info("Resource limit reached")
+            else:
+                self.logger.error(f"DuckDuckGo error: {str(e)}")
             return []
         else:
             raise Exception('not implemented yet')
@@ -310,6 +335,8 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
         current_query = data['current_query']
 
     logger = Logger(options)
+    client.logger = logger
+    logger.info(f"Using {client.search_engine} as search engine")
     dorker = Dorker(logger, client.search, client.error_handler)
 
     queries = load_queries(file_or_query)
@@ -328,7 +355,7 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
             dorker.query_results(query, offset)
             session.save(file_or_query, logger, dorker)
         except Exception as e:
-            raise e
+            #raise e
             logger.error(f"Error during query execution: {e}")
             session.save(file_or_query, logger, dorker)
             exit(1)
@@ -352,8 +379,10 @@ Examples:
     ./gdorker.py -q "site:example.com" -k YOUR_API_KEY -x YOUR_CSE_ID
     ./gdorker.py -q "inurl:admin" -k YOUR_API_KEY -x YOUR_CSE_ID -t -c -b
     ./gdorker.py -q "filetype:pdf" -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
-    ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b
+    ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt -b --engine duckduckgo
     ./gdorker.py -q ./bb_dorks.txt -k YOUR_API_KEY -x YOUR_CSE_ID -f results.txt --session ./gdorker_session_1744260850.json
+Config file is located in ~/.config/gdorker/config.json
+    You can set your API key and CSE ID there, so you don't need to pass them every time.
 """)
 
     required = parser.add_argument_group('Required arguments')
@@ -399,7 +428,7 @@ Examples:
     content.add_argument(
         "-b", "--body",
         action="store_true",
-        help="Include first 100 chars of page body"
+        help="Include first 100 chars of page body (no extra request for duckduckgo)"
     )
 
     parser.add_argument(
@@ -415,7 +444,8 @@ Examples:
         'body': args.body,
         'code': args.code,
         'dest': args.file,
-        'debug': args.debug
+        'debug': args.debug,
+        'engine': args.engine
     }
 
     #if args.debug:
