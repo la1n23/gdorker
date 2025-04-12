@@ -251,7 +251,7 @@ class ConfigManager:
         api_keys = self.load_api_keys()
         api_key = api_keys.get('google_api_key', '') or self.api_key
         cse_id = api_keys.get('google_cse_id', '') or self.cse_id
-        if not len(api_key) or not len(cse_id):
+        if api_key and cse_id and (not len(api_key) or not len(cse_id)):
             raise ValueError("API Key and CSE ID must be set in the configuration file.")
             
         return api_key, cse_id
