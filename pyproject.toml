@@ -4,11 +4,12 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 [project]
 name = "gdorker"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
   "google-api-python-client",
   "duckduckgo_search",
-  "aiohttp"
+  "aiohttp",
+  "colorama"
 ]
 description = "Script for automation search/dorking with Google and Duckduckgo"
 authors = [
