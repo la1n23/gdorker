@@ -349,14 +349,14 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
         search_client.cse_id if hasattr(search_client, 'cse_id') else None, 
         file_or_query, logger, dorker))
         
-    for query in queries:
+    for i, query in enumerate(queries):
         logger.info(f"Query: {query}")
         try:
             dorker.query_results(query, offset)
             session.save(file_or_query, logger, dorker)
         except Exception as e:
-            #raise e
-            logger.error(f"Error during query execution: {e}")
+            if i:
+                logger.error(f"Error during query execution: {e}")
             session.save(file_or_query, logger, dorker)
             exit(1)
         if dorker.is_limit_reached:
@@ -450,6 +450,9 @@ Config file is located in ~/.config/gdorker/config.json
 
     #if args.debug:
     #    print(dir(Fore))
+
+    if not args.query and not args.session:
+        raise ValueError("No query specified")
 
     session = args.session
     resume = bool(session)

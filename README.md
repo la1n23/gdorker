@@ -1,4 +1,6 @@
-# G-DORCKER
+# GDORKER
+
+## Get API Keys from Google Search API
 
 https://programmablesearchengine.google.com/controlpanel/
 
@@ -8,7 +10,5 @@ source venv/bin/activate
 
 pip3 install -r requirements.txt
 
-pytest -v
-coverage run -m pytest
-coverage report -m
+./gdorker.py --help
 ```
