@@ -364,7 +364,7 @@ def main(client: SearchClient, file_or_query: str, resume: bool, session: Sessio
             exit(1)
     session.clean()
 
-if __name__ == "__main__":
+def entrypoint():
     print(banner)
     parser = argparse.ArgumentParser(
         description="""

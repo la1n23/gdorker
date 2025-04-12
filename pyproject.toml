@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "gdorker"
+version = "0.1.0"
+description = ""
+authors = ["la1n23 <la1n23@proton.me>"]
+readme = "README.md"
+packages = [{include = "gdorker"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+colorama = "^0.4.6"
+google-api-python-client = "^2.166.0"
+duckduckgo-search = "^8.0.0"
+aiohttp = "^3.11.16"
+
+[tool.poetry.scripts]
+gdorker = "gdorker.script:entrypoint"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
